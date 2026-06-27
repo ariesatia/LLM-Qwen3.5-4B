@@ -1,3 +1,167 @@
+1. Pastikan Ollama berjalan
+Periksa container:
+docker ps
+
+Uji Ollama dari host:
+curl http://localhost:11434/api/tags
+
+Pastikan model Qwen tersedia:
+docker exec -it ollama ollama list
+
+Hasilnya minimal menampilkan:
+qwen3.5:4b
+
+2. Buat Docker network bersama
+Agar Open WebUI bisa mengakses Ollama menggunakan nama container, buat network:
+docker network create rag-network
+
+Hubungkan Ollama:
+docker network connect rag-network ollama
+
+Periksa:
+docker network inspect rag-network \
+  --format '{{range $k,$v := .Containers}}{{$v.Name}}{{"\n"}}{{end}}'
+
+Untuk sementara seharusnya terlihat:
+ollama
+
+3. Buat volume Open WebUI
+Buat volume:
+docker volume create open-webui
+
+Periksa:
+docker volume ls | grep open-webui
+
+Volume harus dipasang ke:
+/app/backend/data
+
+4. Jalankan Open WebUI
+docker run -d \
+  --name open-webui \
+  --restart unless-stopped \
+  --network rag-network \
+  -p 3000:8080 \
+  -e OLLAMA_BASE_URL=http://ollama:11434 \
+  -v open-webui:/app/backend/data \
+  ghcr.io/open-webui/open-webui:main
+
+5. Pastikan Open WebUI hidup
+docker ps
+
+Hasil yang diharapkan:
+open-webui   ghcr.io/open-webui/open-webui:main   Up ... (healthy)
+ollama       ollama/ollama                        Up ...
+
+6. Uji koneksi Open WebUI ke Ollama
+Jalankan dari dalam container Open WebUI:
+docker exec -it open-webui \
+  curl http://ollama:11434/api/tags
+
+Jika berhasil, output akan menampilkan model-model seperti:
+qwen3.5:4b
+
+Ini membuktikan:
+Open WebUI → Docker network → Ollama
+sudah terhubung.
+
+docker network inspect rag-network \
+  --format '{{range $k,$v := .Containers}}{{$v.Name}}{{"\n"}}{{end}}'
+
+Harus terlihat:
+ollama
+open-webui
+
+7. Buka Open WebUI
+Buka browser:
+http://localhost:3000
+
+Setelah masuk, buka:
+Admin Panel
+→ Settings
+→ Connections
+→ Ollama
+
+Pastikan alamat Ollama adalah:
+http://ollama:11434
+
+8. Pilih Qwen3.5 4B
+Masuk ke:
+New Chat
+
+Pada pemilih model di bagian atas, pilih:
+qwen3.5:4b
+
+Uji dengan pertanyaan:
+Jelaskan fungsi embedding dalam sistem RAG.
+
+Jika model menjawab, maka rangkaian berikut sudah berhasil:
+Browser
+   ↓
+Open WebUI
+   ↓
+Ollama
+   ↓
+Qwen3.5 4B
+
+9. Pasang model embedding
+Setelah chat Qwen berjalan, unduh model embedding:
+
+docker exec -it ollama \
+  ollama pull nomic-embed-text
+
+Periksa:
+docker exec -it ollama ollama list
+
+Pastikan terlihat:
+nomic-embed-text:latest
+
+Model ini digunakan untuk membuat embedding dokumen dan pertanyaan pada sistem RAG.
+
+10. Atur embedding di Open WebUI
+Buka:
+
+Admin Panel
+→ Settings
+→ Documents
+
+Atur:
+Embedding Model Engine : Ollama
+Ollama URL             : http://ollama:11434
+Embedding Model        : nomic-embed-text:latest
+Bypass Embedding       : OFF
+Chunk Size             : 1000
+Chunk Overlap          : 100
+
+Kemudian klik:
+Save
+
+Pada tahap ini, Open WebUI masih dapat memakai vector store internalnya. Artinya, RAG dasar sudah dapat digunakan meskipun ChromaDB eksternal belum dipasang.
+
+11. Uji RAG dasar sebelum memasang ChromaDB
+Masuk ke:
+Workspace
+→ Knowledge
+
+Buat Knowledge baru, misalnya:
+Uji RAG
+
+Unggah dokumen yang berisi kalimat unik:
+Kode pengujian RAG adalah TOBA-2719.
+
+Kemudian buka chat Qwen dan hubungkan Knowledge tersebut.
+
+Tanyakan:
+Apa kode pengujian RAG dalam dokumen?
+
+Jika jawabannya:
+TOBA-2719
+
+berarti RAG dasar Open WebUI sudah berjalan.
+
+
+
+
+
 open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
